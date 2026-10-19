@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}CashBridge — Businesses{% endblock %}
+{% block content %}
+<section class="head">
+  <div class="spread">
+    <h1>Businesses</h1>
+    <a class="btn primary small" href="/onboard">+ New business</a>
+  </div>
+  <p class="muted">See cash shortfalls before they happen. Non-loan options first; financing only when it fits.</p>
+</section>
+
+{% if not businesses %}
+<div class="card empty">
+  <svg class="icon big"><use href="#i-chart"/></svg>
+  <p>No businesses yet. Create one and upload its transactions — the first answer takes under three minutes.</p>
+  <a class="btn primary" href="/onboard">Create a business</a>
+</div>
+{% else %}
+<div class="card">
+  <table class="table watchlist">
+    <thead>
+      <tr>
+        <th>Business</th>
+        <th class="right">Balance today</th>
+        <th>&Delta; 7 days</th>
+        <th>Outlook</th>
+        <th>Consent</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for b in businesses %}
+      <tr>
+        <td class="name-cell">
+          <a class="rowlink" href="/business/{{ b.id }}">{{ b.name }}</a>
+          <div class="sub">{{ b.sector }}</div>
+        </td>
+        <td class="right">{{ b.balance|idr }}</td>
+        <td>
+          <span class="chip {{ 'gain' if b.delta7 >= 0 else 'loss' }}">
+            <svg class="icon tiny"><use href="#i-{{ 'up' if b.delta7 >= 0 else 'down' }}"/></svg>{{ b.delta7|signed_short }}
+          </span>
+        </td>
+        <td>
+          {% if b.decision == 'no_loan_needed' %}<span class="chip gain">No shortfall</span>
+          {% elif b.decision == 'loan_available' %}<span class="chip loss-soft">Gap &mdash; options available</span>
+          {% else %}<span class="chip loss">Gap &mdash; financing not advised</span>{% endif %}
+          {% if b.gap %}<div class="sub">from {{ b.gap.start_date }} &middot; depth {{ b.gap.depth|idr }}</div>{% endif %}
+        </td>
+        <td>{% if b.consent_active %}<span class="chip gain">active</span>{% else %}<span class="chip loss">revoked</span>{% endif %}</td>
+        <td class="right">
+          <a class="rowlink" href="/business/{{ b.id }}" aria-label="Open {{ b.name }} dashboard">
+            <svg class="icon"><use href="#i-chev"/></svg>
+          </a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

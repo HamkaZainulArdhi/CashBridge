@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Audit trail — CashBridge{% endblock %}
+{% block content %}
+<section class="head">
+  <h1>Tamper-evident audit trail</h1>
+  {% if chain.ok %}
+  <div class="banner ok"><strong>Chain intact:</strong> {{ chain.entries }} entries, every hash links to its predecessor.</div>
+  {% else %}
+  <div class="banner danger"><strong>Chain broken at entry {{ chain.broken_at }}:</strong> {{ chain.detail }}</div>
+  {% endif %}
+  <p class="muted small">Each entry stores the SHA-256 hash of the previous entry plus its own content.
+    Editing or deleting any row breaks the chain and points at the first broken entry.</p>
+</section>
+
+<div class="card">
+  <table class="table">
+    <tr><th>#</th><th>When (UTC)</th><th>Actor</th><th>Action</th><th>Entity</th><th>Payload</th></tr>
+    {% for e in entries %}
+    <tr>
+      <td>{{ e.id }}</td>
+      <td class="muted small">{{ e.ts }}</td>
+      <td>{{ e.actor }}</td>
+      <td><strong>{{ e.action }}</strong></td>
+      <td class="muted small">{{ e.entity_type or '' }} {{ e.entity_id or '' }}</td>
+      <td><details><summary class="muted small">payload</summary><pre>{{ e.payload|pretty }}</pre></details></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

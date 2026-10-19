@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}New business — CashBridge{% endblock %}
+{% block content %}
+<section class="head">
+  <h1>Create a business</h1>
+  <p class="muted">First run: name it, upload transactions (CSV), and within a minute you get the
+    14-day outlook with the “when does money run short?” answer.</p>
+</section>
+
+<div class="grid">
+  <div class="col main">
+    <div class="card">
+      <form method="post" action="/onboard" enctype="multipart/form-data" class="stack">
+        <label>Business name
+          <input type="text" name="name" required placeholder="Warung Bu Sari">
+        </label>
+        <label>Sector
+          <input type="text" name="sector" value="retail">
+        </label>
+        <div class="row">
+          <label>Safety threshold (IDR)
+            <input type="text" name="safety_balance" placeholder="10.000.000">
+          </label>
+          <label>Cash on hand today (IDR)
+            <input type="text" name="opening_balance" placeholder="15.000.000">
+          </label>
+        </div>
+        <label>Transactions CSV (optional)
+          <input type="file" name="file" accept=".csv">
+        </label>
+        <p class="muted small">Columns: <code>date, description, amount, direction, counterparty</code>.
+          Sample exports live in <code>data/samples/</code>. Consent is granted automatically at
+          onboarding and can be revoked any time.</p>
+        <button class="primary">Create &amp; analyze</button>
+      </form>
+    </div>
+  </div>
+  <div class="col side">
+    <div class="card">
+      <h2>What happens next</h2>
+      <ol class="steps">
+        <li>Transactions are deduplicated and categorized.</li>
+        <li>Recurring bills are learned from your own dates.</li>
+        <li>You get low / expected / high 14-day scenarios.</li>
+        <li>If a gap appears: non-loan options are simulated first, financing is sized second.</li>
+      </ol>
+    </div>
+  </div>
+</div>
+{% endblock %}

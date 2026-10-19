@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0E0F11">
+<title>{% block title %}CashBridge{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&display=swap">
+<link rel="stylesheet" href="/static/style.css">
+{% block head %}{% endblock %}
+</head>
+<body class="{% block bodyclass %}{% endblock %}">
+
+<svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <symbol id="i-up" viewBox="0 0 24 24"><path fill="currentColor" d="M12 7l5 8H7z"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path fill="currentColor" d="M12 17l-5-8h10z"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M12 4l1.7 5.6L19.5 11l-5.8 1.7L12 18.5l-1.7-5.8L4.5 11l5.8-1.4z"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4.5 11.5L19.5 4.5L14 19.5l-2.7-5.9-6.8-2.1z"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="4" height="10" rx="1"/><rect x="10" y="4" width="4" height="16" rx="1"/><rect x="16" y="13" width="4" height="7" rx="1"/></g></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 16V5m0 0L8 9m4-4l4 4M5 19h14"/></symbol>
+</svg>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/">Cash<span>Bridge</span></a>
+    <nav class="tabs">
+      <a href="/" class="{{ 'active' if nav_active == 'businesses' }}">Businesses</a>
+      <a href="/bank" class="{{ 'active' if nav_active == 'bank' }}">Bank sandbox</a>
+      <a href="/audit" class="{{ 'active' if nav_active == 'audit' }}">Audit trail</a>
+      <a href="/onboard" class="{{ 'active' if nav_active == 'onboard' }}">+ New business</a>
+    </nav>
+    <div class="engine" title="Explanation engine">{{ engine_label }}</div>
+  </div>
+</header>
+
+{% if strip %}
+<div class="strip">
+  <div class="strip-inner">
+    {% for s in strip %}
+    <a class="strip-chip {{ 'active' if s.active }}" href="/business/{{ s.id }}" title="{{ s.name }} — balance today {{ s.balance|idr }}">
+      <span class="name">{{ s.name }}</span>
+      <span class="value">{{ s.balance|short }}</span>
+      <span class="chip {{ 'gain' if s.delta7 >= 0 else 'loss' }}">
+        <svg class="icon tiny"><use href="#i-{{ 'up' if s.delta7 >= 0 else 'down' }}"/></svg>{{ s.delta7|signed_short }}
+      </span>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<main>
+  {% if msg %}<div class="flash {{ level }}">{{ msg }}</div>{% endif %}
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="foot">
+  Forecasts are estimates, not financial advice — and every disbursement or repayment here is a
+  <strong>sandbox simulation</strong>. No real money moves.
+</footer>
+
+{% block askbar %}{% endblock %}
+<script src="/static/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

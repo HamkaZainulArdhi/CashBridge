@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Bank sandbox — CashBridge{% endblock %}
+{% block content %}
+<section class="head">
+  <h1>Sandbox bank</h1>
+  <p class="muted">Simulated lender side: product catalog, offers, disbursements and repayments.
+    Every action goes through the same policy engine (T0–T3, caps, idempotency, approval gates)
+    and lands in the audit chain.</p>
+  {% if chain.ok %}<span class="chip gain">audit chain intact ({{ chain.entries }} entries)</span>
+  {% else %}<span class="chip loss">audit chain broken at {{ chain.broken_at }}</span>{% endif %}
+</section>
+
+<div class="grid">
+  <div class="col main">
+    <div class="card">
+      <h2>Product catalog</h2>
+      <table class="table">
+        <tr><th>Product</th><th>Tenor</th><th>Flat fee</th><th>Max amount</th><th>Min coverage</th><th>Description</th></tr>
+        {% for p in products %}
+        <tr><td><code>{{ p.id }}</code> — {{ p.name }}</td><td>{{ p.tenor_days }}d</td>
+          <td>{{ p.flat_fee_pct }}%</td><td>{{ p.max_amount|idr }}</td>
+          <td>{{ '%.2f'|format(p.min_coverage_ratio) }}x</td><td class="muted small">{{ p.description }}</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Sandbox loans</h2>
+      {% if loans %}
+      <table class="table">
+        <tr><th>Loan</th><th>Business</th><th>Product</th><th>Principal</th><th>Loan status</th><th>Offer status</th></tr>
+        {% for l in loans %}
+        <tr><td>#{{ l.id }}</td><td>{{ l.business_name }}</td><td>{{ l.product_id }}</td>
+          <td>{{ l.principal|idr }}</td><td><span class="chip">{{ l.status }}</span></td>
+          <td><span class="chip">{{ l.offer_status }}</span></td></tr>
+        {% endfor %}
+      </table>
+      {% else %}<p class="muted">No sandbox loans yet. Approve an offer in a business dashboard to create one.</p>{% endif %}
+    </div>
+
+    <div class="card">
+      <h2>Ledger</h2>
+      {% if ledger %}
+      <table class="table small">
+        <tr><th>#</th><th>Business</th><th>Type</th><th>Amount</th><th>Idempotency key</th><th>When</th></tr>
+        {% for e in ledger %}
+        <tr><td>{{ e.id }}</td><td>{{ e.business_name }}</td><td>{{ e.entry_type }}</td>
+          <td>{{ e.amount|idr }}</td><td class="muted small"><code>{{ e.idempotency_key }}</code></td>
+          <td class="muted small">{{ e.created_at }}</td></tr>
+        {% endfor %}
+      </table>
+      {% else %}<p class="muted">Ledger is empty.</p>{% endif %}
+    </div>
+  </div>
+
+  <div class="col side">
+    <div class="card">
+      <h2>API endpoints</h2>
+      <table class="table small">
+        <tr><th>Method</th><th>Path</th></tr>
+        <tr><td>GET</td><td><code>/api/bank/products</code></td></tr>
+        <tr><td>POST</td><td><code>/api/bank/offers</code> {business_id, product_id}</td></tr>
+        <tr><td>POST</td><td><code>/api/bank/offers/{id}/approve</code></td></tr>
+        <tr><td>POST</td><td><code>/api/bank/offers/{id}/reject</code></td></tr>
+        <tr><td>POST</td><td><code>/api/bank/offers/{id}/disburse</code> (Idempotency-Key header)</td></tr>
+        <tr><td>POST</td><td><code>/api/bank/repayments/{id}/pay</code></td></tr>
+        <tr><td>GET</td><td><code>/api/bank/loans?business_id=</code></td></tr>
+      </table>
+      <p class="muted small">Duplicate disburse attempts return <code>409 duplicate_action</code>.
+        Execution without approval returns <code>409 approval_missing</code>.
+        Open API docs: <a href="/api/docs">/api/docs</a></p>
+    </div>
+
+    <div class="card">
+      <h2>Example flow</h2>
+      <pre class="code">curl -X POST localhost:8000/api/bank/offers \
+  -H "Content-Type: application/json" \
+  -d '{"business_id": 3, "product_id": "receivable_bridge"}'
+
+curl -X POST localhost:8000/api/bank/offers/1/approve \
+  -H "Content-Type: application/json" -d '{"actor": "owner"}'
+
+curl -X POST localhost:8000/api/bank/offers/1/disburse \
+  -H "Idempotency-Key: demo-disburse-1"</pre>
+    </div>
+  </div>
+</div>
+{% endblock %}

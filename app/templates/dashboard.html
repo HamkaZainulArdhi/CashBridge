@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+{% block title %}{{ business.name }} — CashBridge{% endblock %}
+{% block bodyclass %}has-askbar{% endblock %}
+{% block content %}
+{% set gap = rec.gap %}
+{% set min_low = rec.forecast.days|map(attribute='balance_low')|min %}
+{% set headroom = min_low - business.safety_balance %}
+
+<section class="head">
+  <div class="spread">
+    <div class="row">
+      <h1>{{ business.name }}</h1>
+      <span class="chip">{{ business.sector }}</span>
+      {% if consent_active %}<span class="chip gain">consent active</span>
+      {% else %}<span class="chip loss">consent revoked</span>{% endif %}
+    </div>
+    <div class="row">
+      {% if consent_active %}
+      <form method="post" action="/business/{{ business.id }}/consent/revoke">
+        <button class="text small">Revoke data consent</button>
+      </form>
+      {% else %}
+      <form method="post" action="/business/{{ business.id }}/consent/grant">
+        <button class="primary small">Grant data consent</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  <dl class="facts">
+    <div><dt>Balance today</dt><dd>{{ balance|idr }}</dd></div>
+    <div><dt>Safety threshold</dt><dd>{{ business.safety_balance|idr }}</dd></div>
+    <div><dt>Lowest projected (low, {{ rec.forecast.horizon_days }}d)</dt>
+      <dd>{{ min_low|idr }}
+        <span class="chip {{ 'gain' if headroom >= 0 else 'loss' }}">
+          <svg class="icon tiny"><use href="#i-{{ 'up' if headroom >= 0 else 'down' }}"/></svg>{{ headroom|signed_short }} vs safety
+        </span>
+      </dd>
+    </div>
+  </dl>
+</section>
+
+{% if gap %}
+<div class="banner {{ 'danger' if gap.severity == 'expected' else 'warn' }}">
+  <strong>Cash gap projected:</strong> {{ gap.start_date }} &rarr; {{ gap.end_date }}
+  ({{ gap.severity }}) — depth {{ gap.depth|idr }}, shortfall to cover {{ gap.shortfall|idr }}.
+</div>
+{% else %}
+<div class="banner ok">
+  <strong>No cash shortfall projected</strong> in the next {{ rec.forecast.horizon_days }} days.
+  Lowest projected balance {{ min_low|idr }} stays above the safety threshold.
+</div>
+{% endif %}
+
+<div class="grid">
+  <div class="col main">
+
+    <div class="card">
+      <h2>14-day cash outlook</h2>
+      <div class="chartbox"><canvas id="forecastChart"></canvas></div>
+      <p class="muted small">Three transparent scenarios from your own history and open receivables.
+        The dashed line is your safety threshold ({{ business.safety_balance|idr }}).</p>
+    </div>
+
+    {% if gap %}
+    <div class="card">
+      <h2>What you can do first — non-loan options</h2>
+      <p class="muted small">Each option is simulated with the same forecast engine. Loans come after these.</p>
+      <ul class="optionlist">
+        {% for o in rec.non_loan %}
+        <li>
+          <div class="spread">
+            <strong>{{ o.rank }}. {{ o.title }}</strong>
+            <span class="impact {{ 'pos' if o.impact.improvement > 0 }}">{{ o.impact.improvement|signed }}</span>
+          </div>
+          <div class="sub">{{ o.detail }}</div>
+          <div class="row small">
+            {% if o.impact.clears_gap %}<span class="chip gain">clears the gap</span>
+            {% elif o.impact.improvement > 0 %}<span class="chip loss-soft">reduces the gap</span>
+            {% else %}<span class="chip">no effect here</span>{% endif %}
+            <span class="muted">lowest balance &rarr; {{ o.impact.new_min_low|idr }}</span>
+          </div>
+        </li>
+        {% else %}
+        <li class="muted">No non-loan lever found; review supplier and payroll timing manually.</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>If borrowing is still needed</h2>
+      {% if not rec.loan %}
+      <p class="muted">No financing needed — there is no gap to cover.</p>
+      {% elif rec.loan.blocked %}
+      <p class="danger-text"><strong>Financing not recommended:</strong> {{ rec.loan.block_reason }}.</p>
+      <table class="table small">
+        <thead><tr><th>Product</th><th>Tenor</th><th class="right">Coverage</th><th class="right">Required</th><th>Why not</th></tr></thead>
+        <tbody>
+        {% for p in rec.loan.products %}
+        <tr>
+          <td>{{ p.name }}</td><td>{{ p.tenor_days }}d</td>
+          <td class="right">{{ '%.2f'|format(p.coverage_ratio) }}x</td>
+          <td class="right">{{ '%.2f'|format(p.min_coverage_ratio) }}x</td>
+          <td class="muted">{{ p.reason or 'sized and affordable' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <form class="row" method="post" action="/business/{{ business.id }}/offers">
+        <select name="product_id">
+          {% for p in rec.loan.eligible %}
+          <option value="{{ p.product_id }}">
+            {{ p.name }} — {{ p.principal|idr }}, {{ p.tenor_days }}d, coverage {{ '%.2f'|format(p.coverage_ratio) }}x
+          </option>
+          {% endfor %}
+        </select>
+        <button class="primary">Draft offer</button>
+      </form>
+      <p class="muted small">Sized to the gap with a 10% buffer. A draft is just a proposal:
+        nothing executes until you approve it below, and disbursement is a sandbox simulation.</p>
+      {% endif %}
+
+      {% if offers %}
+      <table class="table">
+        <thead><tr><th>Offer</th><th>Product</th><th class="right">Principal</th><th>Tenor</th><th class="right">Coverage</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+        {% for o in offers %}
+        {% set ocls = 'blue' if o.status == 'approved' else ('loss' if o.status == 'rejected' else ('gain' if o.status == 'settled' else '')) %}
+        <tr>
+          <td>#{{ o.id }}</td>
+          <td>{{ o.product_id }}</td>
+          <td class="right">{{ o.principal|idr }}</td>
+          <td>{{ o.tenor_days }}d</td>
+          <td class="right">{{ '%.2f'|format(o.coverage_ratio) }}x</td>
+          <td><span class="chip {{ ocls }}">{{ o.status }}</span>
+            {% if o.last_approval %}<div class="sub">by {{ o.last_approval.actor }} ({{ o.last_approval.decision }})</div>{% endif %}
+          </td>
+          <td class="actions">
+            {% if o.status == 'draft' %}
+            <form method="post" action="/offers/{{ o.id }}/approve"><button class="primary small">Approve</button></form>
+            <form method="post" action="/offers/{{ o.id }}/reject"><button class="small">Reject</button></form>
+            {% elif o.status == 'approved' %}
+            <form method="post" action="/offers/{{ o.id }}/disburse"><button class="primary small">Disburse (sandbox)</button></form>
+            {% else %}<span class="muted small">{{ o.status }}</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if sandbox.repayments %}
+    <div class="card">
+      <h2>Sandbox loan &amp; repayments</h2>
+      <p class="muted small">Totals: disbursed {{ sandbox.total_disbursed|idr }} · repaid {{ sandbox.total_repaid|idr }}.</p>
+      <table class="table">
+        <thead><tr><th>#</th><th>Due</th><th class="right">Amount</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+        {% for r in sandbox.repayments %}
+        <tr>
+          <td>{{ r.id }}</td><td>{{ r.due_date }}</td><td class="right">{{ r.amount|idr }}</td>
+          <td><span class="chip {{ 'gain' if r.status == 'paid' }}">{{ r.status }}</span></td>
+          <td class="actions">
+            {% if r.status == 'scheduled' %}
+            <form method="post" action="/repayments/{{ r.id }}/pay"><button class="small">Mark paid (simulate payout)</button></form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <div class="col side">
+
+    <div class="card">
+      <h2>Simulate a what-if</h2>
+      <form class="row" id="simulate-form" data-endpoint="/api/business/{{ business.id }}/simulate">
+        <select name="preset">
+          <option value="accelerate">Collect the largest payouts 3 days early</option>
+          <option value="restock">Postpone restocking by one week</option>
+          <option value="cut">Cut discretionary spending by 40%</option>
+          <option value="custom">Custom payout delay (days)</option>
+        </select>
+        <input type="number" name="shift" value="3" min="1" max="14" title="Days (for custom)">
+        <button>Run simulation</button>
+      </form>
+      <div id="simulate-result" class="result"></div>
+    </div>
+
+    <div class="card">
+      <h2>This week vs last week</h2>
+      <dl class="facts compact">
+        <div><dt>Net cash (7d)</dt><dd>{{ delta.current.net|idr }}
+          <span class="chip {{ 'gain' if delta.delta.net >= 0 else 'loss' }}">
+            <svg class="icon tiny"><use href="#i-{{ 'up' if delta.delta.net >= 0 else 'down' }}"/></svg>{{ delta.delta.net|signed_short }}
+          </span></dd></div>
+        <div><dt>Money in</dt><dd>{{ delta.current.inflow|idr }} <span class="muted small">({{ delta.delta.inflow|signed }})</span></dd></div>
+        <div><dt>Money out</dt><dd>{{ delta.current.outflow|idr }} <span class="muted small">({{ delta.delta.outflow|signed }})</span></dd></div>
+      </dl>
+      {% if delta.top_movers %}
+      <table class="table small">
+        <thead><tr><th>Change by category</th><th class="right">This week</th><th class="right">Last week</th></tr></thead>
+        <tbody>
+        {% for m in delta.top_movers %}
+        <tr><td>{{ m.category }}</td><td class="right">{{ m.current|idr }}</td>
+          <td class="right">{{ m.previous|idr }} <span class="muted">({{ m.change|signed }})</span></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2>Bills &amp; commitments ahead</h2>
+      {% if bills %}
+      <table class="table small">
+        <thead><tr><th>Date</th><th>In</th><th>Category</th><th class="right">Amount</th></tr></thead>
+        <tbody>
+        {% for b in bills %}
+        <tr><td>{{ b.date }}</td><td class="muted">{{ b.days_until }}d</td><td>{{ b.category }}</td><td class="right">{{ b.amount|idr }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="muted small">No recurring bills detected in the next 14 days.</p>
+      {% endif %}
+      {% if scheduled %}
+      <p class="muted small">{{ scheduled|length }} sandbox installment(s) scheduled, next {{ scheduled[0].due_date }}.</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2>Add this week's transactions</h2>
+      <form class="row" method="post" action="/business/{{ business.id }}/upload" enctype="multipart/form-data">
+        <input type="file" name="file" accept=".csv" required>
+        <button><svg class="icon"><use href="#i-upload"/></svg>Upload CSV</button>
+      </form>
+      <p class="muted small">
+        {{ upload.n }} uploaded transaction(s){% if upload.last %} — last {{ upload.last }}{% endif %}.
+        Sample exports live in <code>data/samples/</code>. Re-uploading the same rows is safe: duplicates are skipped.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>Recent activity (audit)</h2>
+      <ul class="auditlist">
+        {% for e in audit_entries %}
+        <li><span class="muted small">{{ e.ts }}</span> <strong>{{ e.action }}</strong>
+          <span class="muted small">by {{ e.actor }}</span></li>
+        {% endfor %}
+      </ul>
+      <p><a href="/audit">Open the full tamper-evident trail &rarr;</a></p>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block askbar %}
+<div class="askpanel" id="ask-panel" hidden>
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title"><svg class="icon"><use href="#i-sparkle"/></svg> Answer</span>
+      <button class="icon-btn" type="button" id="ask-close" aria-label="Close answer">
+        <svg class="icon"><use href="#i-x"/></svg>
+      </button>
+    </div>
+    <div id="ask-result" class="result"></div>
+  </div>
+</div>
+<form class="askbar" id="ask-form" data-endpoint="/api/business/{{ business.id }}/ask">
+  <div class="askbar-inner">
+    <svg class="icon lead"><use href="#i-sparkle"/></svg>
+    <input class="text" type="text" name="question" placeholder="Ask anything about this business"
+           autocomplete="off" aria-label="Ask anything about this business">
+    <select name="tier" title="Permission tier for this answer">
+      <option value="T2" selected>T2</option>
+      <option value="T1">T1</option>
+      <option value="T0">T0</option>
+    </select>
+    <button class="send" type="submit" id="ask-send" disabled aria-label="Send question">
+      <svg class="icon"><use href="#i-send"/></svg>
+    </button>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>window.CASHBRIDGE_CHART = {{ chart|tojson }};</script>
+{% endblock %}
